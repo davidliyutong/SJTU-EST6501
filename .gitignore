@@ -1,0 +1,13 @@
+*.vscode
+*scratch.ipynb
+*test.txt
+*build
+*.pyc
+*.ipynb_checkpoints
+
+*__pycache__
+
+MNIST_PYTHORCH_C/export
+MNIST_PYTHORCH_C/tests/train_model/export*
+MNIST_PYTHORCH_C/tests/test_compiler/export
+MNIST_PYTHORCH_C/build
