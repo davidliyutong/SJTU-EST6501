@@ -17,7 +17,7 @@ cd MNIST_PYTHORCH_C/build
 cmake ..
 make
 echo "[INFO] Runing mnist_example"
-./mnist_example > mnist_example.log
+time ./mnist_example > mnist_example.log
 echo "[INFO] Runing test_compiler"
-./test_compiler > test_compiler.log
+time ./test_compiler > test_compiler.log
 cd $ROOT
