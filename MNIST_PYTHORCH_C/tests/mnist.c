@@ -5,6 +5,7 @@
 
 float buf0[32 * 24 * 24];
 float buf1[32 * 24 * 24];
+float buf[51200];
 
 int calc(float* din)
 {
@@ -17,7 +18,8 @@ int calc(float* din)
                28,28,                   // 输入数据(矩阵)高度/宽度
                seq_0_weight,            // 卷积核
                seq_0_bias,              // 偏置
-               seq_0_weight_shape);     // 卷积核形状
+               seq_0_weight_shape,
+               buf);     // 卷积核形状
     // x = F.relu(x)
     relu_f32(buf0, buf0, 32 * 24 * 24);
     // x = F.max_pool2d(x, 2)  # (32, 24, 24)->(32, 12, 12)
@@ -28,7 +30,8 @@ int calc(float* din)
                12, 12,              // 输入数据(矩阵)高度/宽度
                seq_3_weight,        // 卷积核
                seq_3_bias,          // 偏置
-               seq_3_weight_shape); // 卷积核形状
+               seq_3_weight_shape,
+               buf); // 卷积核形状
     // x = F.relu(x)
     relu_f32(buf0, buf0, 32 * 8 * 8);
     // x = F.max_pool2d(x, 2)  # (N, 32, 8, 8)->(N, 32, 4, 4)

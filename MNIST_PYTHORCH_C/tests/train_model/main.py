@@ -22,6 +22,10 @@ DATA_PATH='./data/'
 EXPORT_MODEL_PATH='./export_model/'
 EXPORT_CODE_PATH ='./export_code/'
 
+if not os.path.exists(EXPORT_MODEL_PATH):
+    os.makedirs(EXPORT_MODEL_PATH)
+if not os.path.exists(EXPORT_CODE_PATH): 
+    os.makedirs(EXPORT_CODE_PATH)
 ########################################
 # 演示torch训练MNIST模型并验证算子的原理
 ########################################

@@ -1,40 +1,26 @@
-# 神经网络运算优化
+# Pythorch，一个神经网络编译器/运行时
 
-## Target
+## 实验目标
 
-目标：搭建一套编译工具以支持将简单的Pytorch CNN模型迁移到ARM Cortex-M架构的嵌入式设备运行
-进阶目标：在完成主要目标的基础上，探索各种加速手段
+搭建一套编译工具以支持将简单的Pytorch CNN模型迁移到x86/ARM Cortex-M架构的嵌入式设备运行，探索各种加速手段
 
-预计支持的算子
+## 构建开发/测试流程
 
-- Conv2D
-- Linear
-- MaxPool2d
-- ReLU
-- Flattern
-- ArgMax
+由于条件所限，项目需要在Darwin/Linux系统上进行。因此，我们首先将项目资料中基于Visual Studio的代码转换成CMake工程的。这一过程中，我们创建了`CMakeLists.txt`，并进行了模块的重新划分。
 
-未来
+- `MNIST_PYTHORCH_C/cc`保存神经网络的模块/通用函数
+- `MNIST_PYTHORCH_C/python` 一个`编译器`，生成C函数
+- `tests` 一些测试工程
+- `ci` 自动测试脚本
 
-- AvgPool2d
-- Sigmoid
-- Tanh
-
-## RoadMap
-
-- [ ] 完成VS项目到CMake项目的迁移
-- [ ] 完成x86_64架构下的测试
-- [ ] 完成QEMU虚拟机下的ARM测试
-- [ ] 搭建
-
-## 构建测试流程
-
-由于条件所限，项目需要在Darwin/Linux系统上开展。因此，我们首先将基于Visual Studio的代码转换为基于CMake的。这一过程中，我们创建了CMakeLists，进行了模块的重新划分。
-
-我们首先根据示例代码，构建持续集成测试。测试脚本位于`./ci`目录下。测试大体上分为两个阶段：
+我们首先根据示例代码，构建测试流程。测试脚本为位于`./ci`目录下的`bootstrap.sh`。测试大体上分为两个阶段：
 
 1. 借助PyTorch训练模型，验证模型的准确率。导出C代码
 2. 使用导出的代码编译
+
+- 也可以使用`build_cmake.sh`单独测试C推理代码的功能
+
+我们需要在电脑上安装torch，matplotlib，ipython等Python软件包来训练/导出模型。另外，项目生成的C代码默认使用clang进行编译，但也可以用GCC编译。
 
 ## 问题约束
 
@@ -71,35 +57,118 @@ nn.Sequential(
 - 模型权重被导出到`export_code/param.c`中，并在`export_code/param.h`声明
 - 模型的部分测试数据被导出到`export_code/test_data.c`中，并被编译进了程序
 
-我们按照这个思路，对示例代码进行了扩展。构造的编译器可以一次分析`nn.Sequential`模型的各个子模型，通过正则表达式将它们与对应的模版匹配。并将子模块路由到相应的处理模块进行处理。例如
+我们按照这个思路，对示例代码进行了扩展。构造的编译器可以一次分析`nn.Sequential`模型的各个子模型，通过正则表达式将它们与对应的模版匹配。并将子模块路由到相应的处理模块进行处理。这里以最复杂的`Conv2d`模块的处理为例。该模块的对应处理函数如下
 
 ```python
-@classmethod
-def get_conv2d(cls, context, component: nn.Module):
+    @classmethod
+    def get_conv2d(cls, context, component: nn.Module):
+        """处理Conv2d模块
 
-    layer_id: str = context['id']
-    op: str = 'conv2d' + '_' + context['dtype']  # PYTHORCH_CONV2D_OP
-    in_hgt, in_wid = context['in_shape'][2:4]  # PYTHORCH_CONV2D_ID_IN_HGT, PYTHORCH_CONV2D_ID_IN_WID
-    # PYTHORCH_CONV2D_ID_WEIGHT
-    # PYTHORCH_CONV2D_ID_BIAS
-    # PYTHORCH_CONV2D_ID_SHAPE
-    dout = context['dout']
-    din = context['din']
+        Args:
+            context (_type_): 编译上下文
+            component (nn.Module): Conv2d模块
 
-    state_dict = component.state_dict()
-    
-    free_variables = [context['din']]
-    context['din'] = context['dout']
-    context['dout'] = ''
+        Returns:
+            CompilerToken: CompilerToken
+        """
 
-    res = f"{op}({dout}, {din}, {in_hgt}, {in_wid}, {op}_{layer_id}_weight, {op}_{layer_id}_bias, {op}_{layer_id}_shape);"
-    return res, \
-            {f'{op}_{layer_id}_weight': state_dict['weight'], f'{op}_{layer_id}_bias': state_dict['bias'], f'{op}_{layer_id}_shape': state_dict['weight'].shape}, \
-            cls.get_out_shape(component, context['in_shape']), \
-            free_variables
+        layer_id: str = context["id"]
+        op: str = "conv2d" + "_" + context["dtype"]  # PYTHORCH_CONV2D_OP
+        in_num_c, in_hgt, in_wid = context["in_shape"][
+            1:4
+        ]  # PYTHORCH_CONV2D_ID_IN_HGT, PYTHORCH_CONV2D_ID_IN_WID
+        # PYTHORCH_CONV2D_ID_WEIGHT
+        # PYTHORCH_CONV2D_ID_BIAS
+        # PYTHORCH_CONV2D_ID_SHAPE
+        dout = context["dout"]
+        din = context["din"]
+
+        state_dict = component.state_dict()
+
+        # 计算需要给im2col保留的缓冲区大小
+        pad = 0
+        stride = 1
+        k_hgt, k_wid = state_dict["weight"].shape[2:4]  # 卷积核
+        height_col = (in_hgt + 2 * pad - k_hgt) / stride + 1
+        width_col = (in_wid + 2 * pad - k_wid) / stride + 1
+        channels_col = in_num_c * k_hgt * k_wid
+        dbuf = context["app"] + cls.buf_postfix
+        dbuf_sz = height_col * width_col * channels_col
+
+        free_variables = [context["din"]]
+        context["din"] = context["dout"]
+        context["dout"] = ""
+
+        res = f"{op}({dout}, {din}, {in_hgt}, {in_wid}, {op}_{layer_id}_weight, {op}_{layer_id}_bias, {op}_{layer_id}_shape, {dbuf});"
+        return CompilerToken(
+            c_fn=res,
+            c_params={
+                f"{op}_{layer_id}_weight": state_dict["weight"],
+                f"{op}_{layer_id}_bias": state_dict["bias"],
+                f"{op}_{layer_id}_shape": state_dict["weight"].shape,
+            },
+            out_shape=cls.get_out_shape(component, context["in_shape"]),
+            free_vars=free_variables,
+            buf_claim=dbuf_sz,
+        )
 ```
 
-...
+最终该函数将会生成一行C语句、记录Conv2d的权重、计算Conv2d的输出尺寸，输出Conv2d释放的变量名称和需求的临时变量大小。
+
+值得注意的是，我们不需要处理Flattern，因为Flattern是对张量形状的处理
+
+以此类推，我们处理所有支持的Pytorch模块，最后生成一个这样的函数
+
+```c
+#include "pythorch/pythorch.h"
+#include "calc_params.h"
+__attribute__ ((aligned (32))) float var_0[18432];
+__attribute__ ((aligned (32))) float var_1[18432];
+
+pythorch_err_t calc_fn(float* din, float* dout) {
+
+    pythorch_err_t err = PYTHORCH_OK;
+
+    conv2d_f32(var_0, din, 28, 28, conv2d_f32_0_weight, conv2d_f32_0_bias, conv2d_f32_0_shape, calc_g_buf);
+    relu_f32(var_1, var_0, 18432);
+    maxpool2d_f32(var_0, var_1, 24, 24, 32, 2);
+    conv2d_f32(var_1, var_0, 12, 12, conv2d_f32_3_weight, conv2d_f32_3_bias, conv2d_f32_3_shape, calc_g_buf);
+    relu_f32(var_0, var_1, 2048);
+    maxpool2d_f32(var_1, var_0, 8, 8, 32, 2);
+    /** Flatten **/
+    linear_f32(var_0, var_1, linear_f32_7_weight, linear_f32_7_bias, linear_f32_7_shape);
+    relu_f32(var_1, var_0, 1024);
+    /** Dropout **/
+    linear_f32(dout, var_1, linear_f32_10_weight, linear_f32_10_bias, linear_f32_10_shape);
+
+    return err;
+
+}
+```
+
+其中`pythorch/pythorch`是整个推理库的头文件，引入该头文件并链接推理库就可以使用。该推理库的设计于下一章节叙述。`__attribute__ ((aligned (32))) `是为AVX指令准备的。我们可以看到，自始至终只有两个临时遍历那个var_0和var_1被用来保存的中间结果，这是因为我们处理的是一个序列，并不涉及到复杂的计算图。在复杂的计算图中，可能需要多个变量保存中间结果。
+
+
+## C神经网络推理库及其优化
+
+我们修改了整理了资料中出现的神经网络算子，将其组织在`MNIST_PYTHORCH_C`目录下：
+
+- `avx_mathfun.h` 使用AVX指令实现的数学函数(sin/cos/exp等)
+- `CMakeLists.txt` 定义了pythorch库
+- `conv.c/h` conv2d的帮助函数，主要包括im2colsnuff
+- `gemm.c/h` 通用矩阵乘法函数
+- `moduels.c/h` conv2d/linear/maxpool2d等算子。所有算子都有后缀标明适用的数据类型
+- `pythorch.h` 头文件集合
+- `utils.c/h` `calc_error`函数，一些自定义类型
+
+具体的加速手段如下
+
+- 对于所有的激活函数，使用AVX指令集进行加速。
+- 对于Linear算子的向量点积，使用AVX指令集进行加速。
+- 将卷积输入使用im2col算法处理成二维矩阵，将卷积问题转化成GEMM问题
+- 针对GEMM操作，运用AVX/分块实现优化
+
+im2col是将一个`[C,H,W]`矩阵变成一个`[H,W]`矩阵的一个方法，其原理是利用了行列式进行等价转换。im2col需要一个临时空间保存转换后的输入图像。在有MMU的平台上，这段内存可以用malloc动态分配，但是嵌入式设备的动态内存分配可能会导致不稳定。我们选择分配一个固定地址的静态空间作为缓冲。
 
 ## 在IoT-Lab测试
 
