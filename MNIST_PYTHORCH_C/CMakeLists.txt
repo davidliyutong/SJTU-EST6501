@@ -6,6 +6,7 @@ set(CMAKE_BUILD_TYPE "Release")
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mavx -msse2")
 add_definitions(-DOPTIMIZE_IM2COL=1)
 add_definitions(-DOPTIMIZE_GEMM=2)
+add_definitions(-DOPTIMIZE_INDEX)
 
 
 add_subdirectory(cc/pythorch)

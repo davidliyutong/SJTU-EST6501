@@ -161,13 +161,19 @@ pythorch_err_t maxpool2d_f32(float* dout,
     int dout_hgt = 1 + (din_hgt - ksize) / ksize;
     int dout_wid = 1 + (din_wid - ksize) / ksize;
     float m, v;
-    float* din_sel, * dout_sel;
+    float* din_sel;
+#ifdef OPTIMIZE_INDEX
+    float* dout_sel = dout;
+#endif
 
-    dout_sel = dout;
     for (int c = 0; c < num_c; c++) {
         for (int h = 0; h < dout_hgt; h++) {
             for (int w = 0; w < dout_wid; w++) {
+#ifdef OPTIMIZE_INDEX
                 din_sel = &din[(c * din_hgt + h * ksize) * din_wid + w * ksize];
+#else
+                din_sel = &din[c * din_hgt * din_wid + h * ksize * din_wid + w * ksize];
+#endif
                 m = din_sel[0];
                 for (int y = 0; y < ksize; y++) {
                     for (int x = 0; x < ksize; x++) {
@@ -175,7 +181,11 @@ pythorch_err_t maxpool2d_f32(float* dout,
                         if (v > m) m = v;
                     }
                 }
-                *dout_sel++ = m;
+#ifdef OPTIMIZE_INDEX
+                * dout_sel++ = m;
+#else
+                dout[c * dout_hgt * dout_wid + h * dout_wid + w] = m;
+#endif
             }
         }
     }
@@ -202,21 +212,30 @@ pythorch_err_t avgpool2d_f32(float* dout,
     int dout_hgt = 1 + (din_hgt - ksize) / ksize;
     int dout_wid = 1 + (din_wid - ksize) / ksize;
     float m, v;
-    float* din_sel, * dout_sel;
+    float* din_sel;
+#ifdef OPTIMIZE_INDEX
+    float* dout_sel = dout;
+#endif
 
-    dout_sel = dout;
     for (int c = 0; c < num_c; c++) {
         for (int h = 0; h < dout_hgt; h++) {
             for (int w = 0; w < dout_wid; w++) {
+#ifdef OPTIMIZE_INDEX
                 din_sel = &din[(c * din_hgt + h * ksize) * din_wid + w * ksize];
+#else
+                din_sel = &din[c * din_hgt * din_wid + h * ksize * din_wid + w * ksize];
+#endif
                 m = 0;
                 for (int y = 0; y < ksize; y++) {
                     for (int x = 0; x < ksize; x++) {
                         m += din_sel[y * din_wid + x];
                     }
                 }
-                // dout[c * dout_hgt * dout_wid + h * dout_wid + w] = m / (ksize * ksize);
-                *dout_sel++ = m / (ksize * ksize);
+#ifdef OPTIMIZE_INDEX
+                * dout_sel++ = m / (ksize * ksize);
+#else
+                dout[c * dout_hgt * dout_wid + h * dout_wid + w] = m / (ksize * ksize);
+#endif
             }
         }
     }
