@@ -1,10 +1,10 @@
 /**
  * @file conv.c
  * @author davidliyutong@sjtu.edu.cn
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2022-05-27
- * 
+ *
  *
  * @ref https://github.com/pjreddie/darknet/blob/master/src/col2im.c
  * @ref https://github.com/pjreddie/darknet/blob/master/src/im2col.c
@@ -67,14 +67,6 @@ pythorch_err_t im2col(float* data_im,
                 int col = w_offset + w * stride; // im矩阵的位置
                 int col_index = (c * height_col + h) * width_col + w; // im矩阵的下标
                 data_col[col_index] = data_im[(channel * data_hgt + (row - pad)) * data_wid + (col - pad)];
-                // data_col[col_index] = im2col_get_pixel(data_im,
-                //                                        data_hgt,
-                //                                        data_wid,
-                //                                        data_num_c,
-                //                                        row,
-                //                                        col,
-                //                                        channel,
-                //                                        pad);
             }
         }
     }
@@ -125,15 +117,6 @@ pythorch_err_t col2im(float* data_col,
                 int col = w_offset + w * stride;
                 int col_index = (c * height_col + h) * width_col + w;
                 double val = data_col[col_index];
-                // col2im_add_pixel(data_im,
-                //                  data_hgt,
-                //                  data_wid,
-                //                  data_num_c,
-                //                  row,
-                //                  col,
-                //                  channel,
-                //                  pad,
-                //                  val);
                 data_im[(channel * data_hgt + (row - pad)) * data_wid + (col - pad)] += val;
             }
         }

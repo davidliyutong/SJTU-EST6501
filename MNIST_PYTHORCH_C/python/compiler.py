@@ -582,60 +582,75 @@ class Compiler:
         Returns:
             Dict[str, str]: 文件名:文件内容的KV对
         """
-        c_param_contexts: Dict[str, torch.Tensor] = {} # 保存所有的模型权重
-        c_fn_contexts: List[Dict[str, Union[str, int]]] = [] # 保存生成的C函数段
-        c_var_contexts: Dict[str, List[List[int]]] = {"din": [], "dout": []} # 记录中间变量的分配和尺寸变化
-        c_compile_contexts: List[Dict[str, Any]] = [] # 编译上下文
-        c_g_buf_size: int = 0 # 追踪临时变量的极大值
-        var_generator = self.variable_generator() # 临时变量里那个生成器
+        c_param_contexts: Dict[str, torch.Tensor] = {}  # 保存所有的模型权重
+        c_fn_contexts: List[Dict[str, Union[str, int]]] = []  # 保存生成的C函数段
+        c_var_contexts: Dict[str, List[List[int]]] = {
+            "din": [],
+            "dout": [],
+        }  # 记录中间变量的分配和尺寸变化
+        c_compile_contexts: List[Dict[str, Any]] = []  # 编译上下文
+        c_g_buf_size: int = 0  # 追踪临时变量的极大值
+        var_generator = self.variable_generator()  # 临时变量里那个生成器
 
-        varaibles = deque() # 记录空闲临时变量的队列
-        curr_context = self.init_context() # 初始化编译上下文
-        curr_context["in_shape"] = list(in_shape) # 设定输出尺寸
-        curr_context["din"] = "din" # 入参名称，固定为din，类型为float*
+        varaibles = deque()  # 记录空闲临时变量的队列
+        curr_context = self.init_context()  # 初始化编译上下文
+        curr_context["in_shape"] = list(in_shape)  # 设定输出尺寸
+        curr_context["din"] = "din"  # 入参名称，固定为din，类型为float*
 
         for layer_id, component in enumerate(seq):
             curr_context["id"] = layer_id  # 给每一个component分配一个独一ID
 
             if layer_id >= len(seq) - 1:
-                curr_context["dout"] = "dout" # 如果是最后一层，出参名称固定为dout
+                curr_context["dout"] = "dout"  # 如果是最后一层，出参名称固定为dout
             else:
                 while len(varaibles) > 0:
-                    curr_context["dout"] = varaibles.pop() # 选择一个已经空闲的变量保存dout
+                    curr_context["dout"] = varaibles.pop()  # 选择一个已经空闲的变量保存dout
                 if "dout" not in curr_context or curr_context["dout"] == "":
                     curr_context["dout"] = next(var_generator)  # 分配Lease一个变量，用掉一个名字
                     if curr_context["dout"] not in c_var_contexts.keys():
-                        c_var_contexts[curr_context["dout"]] = [] # 初始化该变量的记录为空
+                        c_var_contexts[curr_context["dout"]] = []  # 初始化该变量的记录为空
 
-            component_name = self.re0.findall(component.__repr__())[0] # 正则匹配模块的名称
-            curr_context["name"] = component_name # 修改Context
+            component_name = self.re0.findall(component.__repr__())[0]  # 正则匹配模块的名称
+            curr_context["name"] = component_name  # 修改Context
 
-            token = self.template_map[component_name](curr_context, component) # 根据路由规则匹配处理函数，得到token
+            token = self.template_map[component_name](
+                curr_context, component
+            )  # 根据路由规则匹配处理函数，得到token
 
-            c_fn_contexts.append(token.c_fn) # 保存token中的C函数体
+            c_fn_contexts.append(token.c_fn)  # 保存token中的C函数体
             c_param_contexts.update(
                 **token.c_params
-            ) if token.c_params is not None else None # 如果该component产生了权重，记录权重数据
-            c_var_contexts[curr_context["din"]].append(token.out_shape) # 跟踪使用的变量尺寸的变化
-            c_g_buf_size = int(max(c_g_buf_size, token.buf_claim)) # 如果component领用的临时变量大小超过了全局缓冲大小，增大全局缓冲
+            ) if token.c_params is not None else None  # 如果该component产生了权重，记录权重数据
+            c_var_contexts[curr_context["din"]].append(token.out_shape)  # 跟踪使用的变量尺寸的变化
+            c_g_buf_size = int(
+                max(c_g_buf_size, token.buf_claim)
+            )  # 如果component领用的临时变量大小超过了全局缓冲大小，增大全局缓冲
 
-            curr_context["in_shape"] = token.out_shape # 更新上下文，为下一个模块准备。下一个模块的输入尺寸是上一个模块的输出尺寸
+            curr_context[
+                "in_shape"
+            ] = token.out_shape  # 更新上下文，为下一个模块准备。下一个模块的输入尺寸是上一个模块的输出尺寸
             varaibles.extend(
-                filter(lambda x: x not in ["din", "dout"], token.free_vars) # 将上一个模块使用完的变量放回变量队列
+                filter(
+                    lambda x: x not in ["din", "dout"], token.free_vars
+                )  # 将上一个模块使用完的变量放回变量队列
             )
-            c_compile_contexts.append(deepcopy(curr_context)) # 跟踪编译上下文的变化
+            c_compile_contexts.append(deepcopy(curr_context))  # 跟踪编译上下文的变化
             pass
 
         del c_var_contexts["din"]
         del c_var_contexts["dout"]
 
-        function_files = self.export_function(c_fn_contexts, c_var_contexts) # 套入模版生成${app}_fn.c/h
-        params_files = self.export_params(c_param_contexts, c_g_buf_size) # 套入模版生成${app}_params.c/h
+        function_files = self.export_function(
+            c_fn_contexts, c_var_contexts
+        )  # 套入模版生成${app}_fn.c/h
+        params_files = self.export_params(
+            c_param_contexts, c_g_buf_size
+        )  # 套入模版生成${app}_params.c/h
         contents = {**function_files, **params_files}
 
-        self.dump(contents) # 写入磁盘
+        self.dump(contents)  # 写入磁盘
 
-        return contents # 返回C函数的内容
+        return contents  # 返回C函数的内容
 
 
 if __name__ == "__main__":

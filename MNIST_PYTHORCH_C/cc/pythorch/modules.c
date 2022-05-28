@@ -1,12 +1,12 @@
 /**
  * @file modules.c
  * @author davidliyutong@sjtu.edu.cn
- * @brief 
+ * @brief
  * @version 0.1
  * @date 2022-05-24
- * 
+ *
  * @copyright Copyright (c) 2022
- * 
+ *
  */
 #include <stdio.h>
 #include <math.h>
@@ -23,19 +23,19 @@
 #include "avx_mathfun.h"
 #endif
 
-/**
- * @brief Conv2d算子
- *
- * @param dout 输出数据
- * @param din 输入数据
- * @param din_hgt 输入数据(矩阵)高度
- * @param din_wid 输入数据(矩阵)宽度
- * @param weight 卷积核
- * @param bias 偏置
- * @param shape 卷积核形状
- * @param buf 缓冲区
- * @return pythorch_err_t
- */
+ /**
+  * @brief Conv2d算子
+  *
+  * @param dout 输出数据
+  * @param din 输入数据
+  * @param din_hgt 输入数据(矩阵)高度
+  * @param din_wid 输入数据(矩阵)宽度
+  * @param weight 卷积核
+  * @param bias 偏置
+  * @param shape 卷积核形状
+  * @param buf 缓冲区
+  * @return pythorch_err_t
+  */
 pythorch_err_t conv2d_f32(float* dout,
                           float* din,
                           int din_hgt,
@@ -64,8 +64,7 @@ pythorch_err_t conv2d_f32(float* dout,
             dout[c_out * dout_hgt * dout_wid + n] = bias[c_out];
     }
 
-    // int buf_size = im2col_get_buf_size(num_c_in, din_hgt, din_wid, k_hgt, k_wid, 1, 0);
-
+#ifdef OPTIMIZE_IM2COL
     // 对输入执行im2col，这样不需要转换卷积核。而且输出天然就是正常排列
     im2col(din, num_c_in, din_hgt, din_wid, k_hgt, k_wid, 1, 0, buf);
     gemm_f32(dout,
@@ -75,7 +74,23 @@ pythorch_err_t conv2d_f32(float* dout,
              num_c_in * k_hgt * k_wid,
              num_c_in * k_hgt * k_wid,
              dout_wid * dout_hgt);
-
+#else
+    for (int cout = 0; cout < num_c_out; cout++) {
+        // 对每个输入通道计算2D卷积
+        for (int cin = 0; cin < num_c_in; cin++) {   // h和w是滑动窗位置
+            for (int h = 0; h < dout_hgt; h++) {
+                for (int w = 0; w < dout_wid; w++) {   // kh和kw是卷积核内的元素位置
+                    for (int kh = 0; kh < k_hgt; kh++) {
+                        for (int kw = 0; kw < k_wid; kw++)
+                            dout[cout * dout_hgt * dout_wid + h * dout_wid + w] +=                          // dout[cout][h][w]
+                            din[cin * din_hgt * din_wid + (h + kh) * din_wid + (w + kw)] *              // din[cin][h+kh][w+kw]
+                            weight[cout * num_c_in * k_hgt * k_wid + cin * k_hgt * k_wid + kh * k_wid + kw];// ker[cout][cin][kh][kw]
+                    }
+                }
+            }
+        }
+}
+#endif
     return PYTHORCH_OK;
 }
 
@@ -146,12 +161,13 @@ pythorch_err_t maxpool2d_f32(float* dout,
     int dout_hgt = 1 + (din_hgt - ksize) / ksize;
     int dout_wid = 1 + (din_wid - ksize) / ksize;
     float m, v;
-    float* din_sel;
+    float* din_sel, * dout_sel;
 
+    dout_sel = dout;
     for (int c = 0; c < num_c; c++) {
         for (int h = 0; h < dout_hgt; h++) {
             for (int w = 0; w < dout_wid; w++) {
-                din_sel = &din[c * din_hgt * din_wid + h * ksize * din_wid + w * ksize];
+                din_sel = &din[(c * din_hgt + h * ksize) * din_wid + w * ksize];
                 m = din_sel[0];
                 for (int y = 0; y < ksize; y++) {
                     for (int x = 0; x < ksize; x++) {
@@ -159,7 +175,7 @@ pythorch_err_t maxpool2d_f32(float* dout,
                         if (v > m) m = v;
                     }
                 }
-                dout[c * dout_hgt * dout_wid + h * dout_wid + w] = m;
+                *dout_sel++ = m;
             }
         }
     }
@@ -186,19 +202,21 @@ pythorch_err_t avgpool2d_f32(float* dout,
     int dout_hgt = 1 + (din_hgt - ksize) / ksize;
     int dout_wid = 1 + (din_wid - ksize) / ksize;
     float m, v;
-    float* din_sel;
+    float* din_sel, * dout_sel;
 
+    dout_sel = dout;
     for (int c = 0; c < num_c; c++) {
         for (int h = 0; h < dout_hgt; h++) {
             for (int w = 0; w < dout_wid; w++) {
-                din_sel = &din[c * din_hgt * din_wid + h * ksize * din_wid + w * ksize];
+                din_sel = &din[(c * din_hgt + h * ksize) * din_wid + w * ksize];
                 m = 0;
                 for (int y = 0; y < ksize; y++) {
                     for (int x = 0; x < ksize; x++) {
                         m += din_sel[y * din_wid + x];
                     }
                 }
-                dout[c * dout_hgt * dout_wid + h * dout_wid + w] = m / (ksize * ksize);
+                // dout[c * dout_hgt * dout_wid + h * dout_wid + w] = m / (ksize * ksize);
+                *dout_sel++ = m / (ksize * ksize);
             }
         }
     }
@@ -314,11 +332,11 @@ pythorch_err_t tanh_f32(float* dout, float* din, int size) {
 
 /**
  * @brief 求Argmax
- * 
+ *
  * @param dout 输出，int*
  * @param din 输入数据
  * @param bin 输入数据的尺寸
- * @return pythorch_err_t 
+ * @return pythorch_err_t
  */
 pythorch_err_t argmax_f32(int* dout, float* din, int bin) {
     float vmax = din[0];
