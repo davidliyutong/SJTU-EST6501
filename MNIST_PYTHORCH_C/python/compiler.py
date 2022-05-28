@@ -461,7 +461,7 @@ class Compiler:
             yield base + "_" + str(index)
             index += 1
 
-    def export_params(self, c_param_contexts, c_g_buf_size):
+    def export_params(self, c_param_contexts):
         """导出模型权重
 
         - torch.Tensor作为权重导出为float[]
@@ -482,14 +482,14 @@ class Compiler:
         data_type = self.dtype_mapping[self.dtype]
         header_buf = ""
         header_buf += "#pragma once\n\n"
-        header_buf += f"extern float {self.app}_g_buf[];\n"
+        # header_buf += f"extern float {self.app}_g_buf[];\n"
 
         # 写入源文件内容
         src_buf = ""
         src_buf += f'#include "{self.app}_params.h"\n\n'
-        src_buf += (
-            f"{self.var_attr} float {self.app}_g_buf[{c_g_buf_size}] = " + "{ 0 };\n"
-        )
+        # src_buf += (
+        #     f"{self.var_attr} float {self.app}_g_buf[{c_g_buf_size}] = " + "{ 0 };\n"
+        # )
 
         # 生成c文件
         for name, value in c_param_contexts.items():
@@ -515,7 +515,7 @@ class Compiler:
 
         return {f"{self.app}_params.h": header_buf, f"{self.app}_params.c": src_buf}
 
-    def export_function(self, c_fn_contexts, c_var_contexts):
+    def export_function(self, c_fn_contexts, c_var_contexts, c_g_buf_size):
         """导出SequantialModule的对应
 
         Args:
@@ -541,6 +541,10 @@ class Compiler:
         src_buf += '#include "pythorch/pythorch.h"\n'
         src_buf += f'#include "{self.app}_params.h"\n'
 
+        src_buf += (
+            f"{self.var_attr} float {self.app}_g_buf[{c_g_buf_size}] = " + "{ 0 };\n"
+        )
+        
         # 计算出每个变量（din, dout）尺寸的历史最大值，按照这个值静态分配变量的内存
         for var_name in c_var_contexts.keys():
             var_size = max(map(lambda x: math.prod(x), c_var_contexts[var_name]))
@@ -641,10 +645,10 @@ class Compiler:
         del c_var_contexts["dout"]
 
         function_files = self.export_function(
-            c_fn_contexts, c_var_contexts
+            c_fn_contexts, c_var_contexts, c_g_buf_size
         )  # 套入模版生成${app}_fn.c/h
         params_files = self.export_params(
-            c_param_contexts, c_g_buf_size
+            c_param_contexts
         )  # 套入模版生成${app}_params.c/h
         contents = {**function_files, **params_files}
 
