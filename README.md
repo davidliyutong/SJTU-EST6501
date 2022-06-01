@@ -1,28 +1,114 @@
-# Pythorch，一个神经网络编译器/运行时
+# PROJ4——神经网络运算优化
+
+Pythorch，一个神经网络编译器/运行时
 
 ## 实验目标
 
-搭建一套编译工具以支持将简单的Pytorch CNN模型迁移到x86/ARM Cortex-M架构的嵌入式设备运行，探索各种加速手段
+搭建一套编译工具以支持将简单的Pytorch CNN模型部署到x86计算机ARM Cortex-M架构的嵌入式设备，并探索各种加速模型推理的手段。
 
 ## 构建开发/测试流程
 
 由于条件所限，项目需要在Darwin/Linux系统上进行。因此，我们首先将项目资料中基于Visual Studio的代码转换成CMake工程的。这一过程中，我们创建了`CMakeLists.txt`，并进行了模块的重新划分。
 
 - `MNIST_PYTHORCH_C/cc`保存神经网络的模块/通用函数
-- `MNIST_PYTHORCH_C/python` 一个`编译器`，生成C函数
-- `tests` 一些测试工程
+- `MNIST_PYTHORCH_C/python` 一个`编译器`，可以从pytorch模型生成C函数
+- `MNIST_PYTHORCH_C/tests` 一些测试工程
 - `ci` 自动测试脚本
 
-我们首先根据示例代码，构建测试流程。测试脚本为位于`./ci`目录下的`bootstrap.sh`。测试大体上分为两个阶段：
+我们首先根据示例代码，构建测试流程。测试脚本为位于`./ci`目录下。测试大体上分为两个阶段：
 
 1. 借助PyTorch训练模型，验证模型的准确率。导出C代码
-2. 使用导出的代码编译
+2. 使用导出的代码编译C程序，目标平台分别是x86和Arm
 
-- 也可以使用`build_cmake.sh`单独测试C推理代码的功能
+### 依赖
 
-我们需要在电脑上安装`torch`，`matplotlib`，`ipython`等Python软件包来训练/导出模型。为了查看模型的结构和参数大小，我们使用了`torch-summary`软件包。该软件包可以用`pip install torch-summary`安装。
+为了训练MNIST手写数字识别模型，我们需要在环境中安装Python。我们还需要安装`torch`，`matplotlib`，`ipython`等Python软件包来训练/导出模型。这些都是示例代码的依赖。此外为了查看模型的结构和参数大小，我们使用了`torch-summary`软件包。该软件包可以用`pip install torch-summary`安装。
 
-项目生成的C代码默认使用clang进行编译，但也可以用GCC编译。
+> 使用`pip install -r requirements.txt`命令，从项目中的`requirements.txt`安装项目的依赖
+
+为了使用AVX指令集，运行的平台需要有支持AVX技术的处理器。并且编译器需要支持AVX指令。我们测试了`gcc@9.4.0`和`clang@10.0.0`两种编译器，它们均支持`-mavx`参数
+
+为了编译ARM架构的可执行程序，我们需要安装`arm-none-eabi-gcc`工具链。该工具可以从[Arm GNU Toolchain Download](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads)下载
+
+在构建STM32工程时，我们使用了[STM32CubeMX](https://www.st.com/zh/development-tools/stm32cubemx.html)，这是一款ST公司出品的自动生成STM32项目的工具。通过图形化的界面就可以对各种STM32芯片的外设进行配置，并导出适用于GNU Toolchain的Makefile工程。然而为了运行项目，STM32CubeMX并不是必须的。
+
+若要构建该工程并得到产物，有以下两种途径
+
+1. 在UNIX系统中构建
+2. 使用Docker环境构建
+
+### 1. 在UNIX系统中构建
+
+使用`ci`目录下的bash脚本，可以一键执行从模型训练到C代码编译、测试的全部流程。这些脚本在Ubuntu上进行了测试。
+
+首先，将目录切换到工程的根目录，该目录下应该有`READNE.md`，`requirements.txt`等文件和`ci`，`MNIST_PYTHORCH_C`子目录
+
+若要训练模型并生成x86架构的C程序，请依次执行`ci/generate_code.sh`，`ci/build_cmake.sh`
+
+```shell
+bash ./ci/generate_code.sh
+bash ./ci/build_cmake.sh
+```
+
+这将会产生以下内容
+
+- `MNIST_PYTHORCH_C/build/`下的`test_compiler`, `mnist_example`等可执行文件，`test_compiler.log`，`mnist_example.log`对应推理结果
+- `MNIST_PYTHORCH_C/test/train_model/export_code`导出的C函数`calc_fn.c/h`、测试数据`test_data.c/h`和模型权重`calc_param.c/h`
+- `MNIST_PYTHORCH_C/test/train_model/export_model`导出的Pytorch模型
+
+
+若要训练模型并生成x86架构的C程序，请依次执行`ci/generate_code_stm32.sh`，`ci/build_stm32.sh`
+
+```shell
+bash ./ci/generate_code.sh
+bash ./ci/build_cmake.sh
+```
+
+这将会产生以下内容
+
+- `MNIST_PYTHORCH_C/test/test_stm32/build`下的`stm32l475vgtx.elf`固件，可以烧录到开发板上运行
+- `MNIST_PYTHORCH_C/test/train_model/export_code_stm32`导出的C函数`calc_fn.c/h`、测试数据`test_data.c/h`和模型权重`calc_param.c/h`。该函数经过优化，体积更小。
+- `MNIST_PYTHORCH_C/test/train_model/export_model_stm32`导出的Pytorch模型。该模型经过优化，体积更小。
+
+### 2. 使用Docker环境构建
+
+使用我们为该工程创建的镜像，可以简化环境配置过程。这要求目标计算机上拥有Docker运行时。[Get Docker](https://docs.docker.com/get-docker/)有各平台获取Docker的指南。以Ubuntu系统为例，运行下列命令可以安装Docker并将当前用户添加到Docker用户组：
+
+```shell
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+newgrp docker
+sudo systemctl restart docker
+```
+
+使用`docker pull`命令，可以下载为该工程配置的镜像。该镜像托管在[hub.docker.com](https://hub.docker.com/r/davidliyutong/sjtu-embsys)：
+
+```shell
+docker pull davidliyutong/sjtu-embsys:latest
+```
+
+也可以从项目的`ci/sjtu-embsys`目录构建镜像：
+
+```shell
+docker build -t davidliyutong/sjtu-embsys:latest ./ci/sjtu-embsys
+```
+
+使用`docker image ls`确保计算机中存在`davidliyutong/sjtu-embsys:latest`镜像，然后在工程的根目录使用以下命令生成产物
+
+```shell
+docker run -it --rm --name mnist_pythorch_c --user=$UID:$(id -g $USER) \
+       -v $(pwd):/opt/embsys/sjtu-embsys-2022 davidliyutong/sjtu-embsys:latest \
+       bash -c "cd /opt/embsys/sjtu-embsys-2022 && bash ./ci/generate_code.sh && bash ./ci/generate_code_stm32.sh && bash ./ci/build_cmake.sh && bash ./ci/build_stm32.sh"
+```
+
+命令的解释：`--user=$UID:$(id -g $USER)`参数使用当前用户执行容器，防止产物带上root权限；`-v $(pwd):/opt/embsys/sjtu-embsys-2022`参数将当前目录（工程根目录）映射到容器内的`/opt/embsys/sjtu-embsys-2022`。容器会依次执行`ci`目录下的脚本。容器中的产物（二进制/C代码/Pytorch模型）会在容器运行完毕后保留。
+
+`ci/bootstrap.sh`中记录了该`docker run`命令。在工程根目录运行`ci/bootstrap.sh`可以起到相同的效果，并且会生成`mnist_pythorch.tar.gz`打包所有的产物
+
+### 清理
+
+`ci/clean.sh`中记录了删除所有工程产物的命令。在工程根目录运行`ci/clean.sh`可以删除所有工程产物。
 
 ## 问题约束
 
@@ -50,7 +136,6 @@ nn.Sequential(
 )
 ```
 
-我们也沿用了示例代码中将测试数据保存在`test_data.c/h`文件中的做法。这主要是为了测试的便利性。在模型的实际的运用中，图像数据应该从摄像头模块获取。
 
 ## 编译Pytorch模型为C代码
 
@@ -119,7 +204,7 @@ nn.Sequential(
 
 值得注意的是，我们不需要处理Flattern，因为Flattern是对张量形状的处理
 
-以此类推，我们处理所有支持的Pytorch模块，最后生成一个这样的函数
+以此类推，我们处理所有支持的Pytorch模块，最后生成一个这样的函数。该函数是nn.Sequential对象的等价
 
 ```c
 #include "pythorch/pythorch.h"
@@ -148,8 +233,9 @@ pythorch_err_t calc_fn(float* din, float* dout) {
 }
 ```
 
-其中`pythorch/pythorch`是整个推理库的头文件，引入该头文件并链接推理库就可以使用。该推理库的设计于下一章节叙述。`__attribute__ ((aligned (32))) `是为AVX指令准备的。我们可以看到，自始至终只有两个临时遍历那个var_0和var_1被用来保存的中间结果，这是因为我们处理的是一个序列，并不涉及到复杂的计算图。在复杂的计算图中，可能需要多个变量保存中间结果。
+其中`pythorch/pythorch。h`是整个推理库的头文件，引入该头文件并链接推理库就可以使用。该推理库的设计于下一章节叙述。`__attribute__ ((aligned (32))) `是为AVX指令准备的。我们可以看到，自始至终只有两个临时变量var_0和var_1被用来保存的中间结果，这是因为我们处理的是一个序列，并不涉及到复杂的计算图。在复杂的计算图中，可能需要多个变量保存中间结果。
 
+对于测试数据集，我们决定沿用示例代码中将测试数据保存在`test_data.c/h`文件中的做法。这主要是为了测试的便利性。在模型的实际的运用中，图像数据应该从磁盘读取、网页上传获取或者摄像头模块捕捉。
 
 ## C神经网络推理库
 
@@ -161,7 +247,7 @@ pythorch_err_t calc_fn(float* din, float* dout) {
 - `gemm.c/h` 通用矩阵乘法函数
 - `moduels.c/h` conv2d/linear/maxpool2d等算子。所有算子都有后缀标明适用的数据类型
 - `pythorch.h` 头文件集合
-- `utils.c/h` `calc_error`函数，一些自定义类型
+- `utils.c/h` `calc_error`函数以及一些自定义类型
 
 具体的加速手段如下
 
@@ -197,7 +283,7 @@ user    0m1.308s
 sys     0m0.012s
 ```
 
-我们为代码添加AVX支持并通过添加`-mavx,-msse`启用AVX加速。推理耗时下降到了1.023s(-0.285)。
+我们为代码添加AVX支持并通过添加`-mavx`启用AVX加速。推理耗时下降到了1.023s(-0.285)。
 
 ```
 real    0m1.023s
@@ -352,11 +438,11 @@ IoT-Lab是一个在线的IoT测试平台，用户可以利用该平台启动数�
 
 ![ST B-L475E-IOT01A](img/20220524104119.png)
 
-启动STM32CubeMX，使用图形化界面配置stm32l475vgtx的各项参数，然后生成Makefile工程。
+启动STM32CubeMX，使用图形化界面配置stm32l475vgtx的各项参数，然后生成Makefile工程。我们暂时只需要使用USART1这一个外设。
 
 ![CubeMX](img/20220524104544.png)
 
-以下是其他的注意事项
+以下是主要的注意事项
 
 - 由于我们使用的是arm-none-eabi-gcc编译器，因此为了将printf重定向到串口，需要实现`int _write(int fd, char *ptr, int len)`函数
 
@@ -386,7 +472,7 @@ int _write(int fd, char *ptr, int len)
 
 我们还可以使用ARM发布的`CMSIS.NN`库和`CMSIS.DSP`库在软件层面进行优化。具体来说，我们可以启用IM2COL算法，将卷积转化为矩阵乘法然后用`arm_mat_mult_f32`加速矩阵计算
 
-如下图所示，使用了IM2COL算法和`arm_mat_mult_f32`库函数后，推理一帧的时间下降到了0.8s
+为了不降低模型精度，我们没有选择对模型量化，而是选择从软件层面优化。如下图所示，使用了IM2COL算法和`arm_mat_mult_f32`库函数后，推理一帧的时间下降到了0.8s
 
 ![arm_mat_mult_f32](img/20220601150900.png)
 

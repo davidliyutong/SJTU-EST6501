@@ -1,0 +1,6 @@
+torch==1.11.0
+torch-summary==1.4.5
+torchaudio==0.11.0
+torchvision==0.12.0
+matplotlib==3.5.1
+ipython==8.3.0

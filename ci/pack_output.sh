@@ -8,10 +8,7 @@ while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symli
 done
 DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
 cd $DIR/../
-
-docker run -it --rm --name mnist_pythorch_c --user=$UID:$(id -g $USER) \
-       -v $(pwd):/opt/embsys/sjtu-embsys-2022 davidliyutong/sjtu-embsys:latest \
-       bash -c "cd /opt/embsys/sjtu-embsys-2022 && bash ./ci/generate_code.sh && bash ./ci/generate_code_stm32.sh && bash ./ci/build_cmake.sh && bash ./ci/build_stm32.sh"
+ROOT=$(pwd)
 
 tar -zvcf mnist_pythorch.tar.gz ./MNIST_PYTHORCH_C/build/test_compiler \
                                 ./MNIST_PYTHORCH_C/build/mnist_example \
