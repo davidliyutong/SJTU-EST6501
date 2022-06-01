@@ -9,6 +9,7 @@
  *
  */
 #include <stdio.h>
+#include <stdint.h>
 #include <math.h>
 #include <memory.h>
 
@@ -66,15 +67,17 @@ pythorch_err_t conv2d_f32(float* dout,
 
 #ifdef OPTIMIZE_IM2COL
     // 对输入执行im2col，这样不需要转换卷积核。而且输出天然就是正常排列
-    im2col(din, num_c_in, din_hgt, din_wid, k_hgt, k_wid, 1, 0, buf);
-    gemm_f32(dout,
-             (float*)weight,
-             buf,
-             num_c_out,
-             num_c_in * k_hgt * k_wid,
-             num_c_in * k_hgt * k_wid,
-             dout_wid * dout_hgt);
-#else
+    if (buf) {
+        im2col(din, num_c_in, din_hgt, din_wid, k_hgt, k_wid, 1, 0, buf);
+        gemm_f32(dout,
+                 (float*)weight,
+                 buf,
+                 num_c_out,
+                 num_c_in * k_hgt * k_wid,
+                 num_c_in * k_hgt * k_wid,
+                 dout_wid * dout_hgt);
+    } else { // buf为空指针，在嵌入式上重新启用naive卷积算法节约内存
+#endif
     for (int cout = 0; cout < num_c_out; cout++) {
         // 对每个输入通道计算2D卷积
         for (int cin = 0; cin < num_c_in; cin++) {   // h和w是滑动窗位置
@@ -89,8 +92,11 @@ pythorch_err_t conv2d_f32(float* dout,
                 }
             }
         }
-}
+    }
+#ifdef OPTIMIZE_IM2COL
+    }
 #endif
+
     return PYTHORCH_OK;
 }
 
@@ -110,12 +116,12 @@ pythorch_err_t linear_f32(float* dout,
                           const float* bias,
                           const int* shape) {
     // 数据尺寸
-    int c_out = 0;
-    int c_in = 0;
     int num_c_out = shape[0], num_c_in = shape[1];
 
+    int c_out = 0;
     for (c_out = 0; c_out < num_c_out; c_out++) {
         dout[c_out] = bias[c_out];
+        int c_in = 0;
 
 #ifdef __AVX__
         // AVX 加速，一次处理8个浮点数
@@ -211,7 +217,7 @@ pythorch_err_t avgpool2d_f32(float* dout,
                              int ksize) {
     int dout_hgt = 1 + (din_hgt - ksize) / ksize;
     int dout_wid = 1 + (din_wid - ksize) / ksize;
-    float m, v;
+    float m;
     float* din_sel;
 #ifdef OPTIMIZE_INDEX
     float* dout_sel = dout;

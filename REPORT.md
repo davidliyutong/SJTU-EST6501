@@ -20,7 +20,9 @@
 
 - 也可以使用`build_cmake.sh`单独测试C推理代码的功能
 
-我们需要在电脑上安装torch，matplotlib，ipython等Python软件包来训练/导出模型。另外，项目生成的C代码默认使用clang进行编译，但也可以用GCC编译。
+我们需要在电脑上安装`torch`，`matplotlib`，`ipython`等Python软件包来训练/导出模型。为了查看模型的结构和参数大小，我们使用了`torch-summary`软件包。该软件包可以用`pip install torch-summary`安装。
+
+项目生成的C代码默认使用clang进行编译，但也可以用GCC编译。
 
 ## 问题约束
 
@@ -171,6 +173,10 @@ pythorch_err_t calc_fn(float* din, float* dout) {
 
 im2col是将一个`[C,H,W]`矩阵变成一个`[H,W]`矩阵的一个方法，其原理是利用了行列式进行等价转换。im2col需要一个临时空间保存转换后的输入图像。在有MMU的平台上，这段内存可以用malloc动态分配，但是嵌入式设备的动态内存分配可能会导致不稳定。我们选择分配一个固定地址的静态空间作为缓冲。
 
+下图展示了im2col算法的具体过程（图片来自互联网）
+
+![im2col](img/im2col.png)
+
 ### 对比测试
 
 对于推理算子的效能分析在一台Hyper-V虚拟机上进行。该虚拟机分配了4GiB内存，4个vCPU(i5-8400)。该型号CPU支持AVX2指令集，即256bit的并行指令。我们在虚拟机上安装了Ubuntu 20.04操作系统，编译器是clang@10.0.0。测试过程中使用`time`命令计时并将输出重定向到文件到文件。
@@ -241,6 +247,53 @@ sys     0m0.000s
 
 至此，面向x86平台的SIMD优化过程告一段落。我们将程序的执行耗时从6.705s缩短到0.127s。其中，比较有效的方法是开启编译器优化、使用IM2COL计算卷积、使用AVX指令这三种。
 
+我们还可以使用Perf工具分析最终加速方法的性能。
+
+```bash
+$ sudo perf stat ./MNIST_PYTHORCH_C/build/test_compiler > /dev/null
+
+ Performance counter stats for './MNIST_PYTHORCH_C/build/test_compiler':
+
+            126.47 msec task-clock                #    0.998 CPUs utilized          
+                 0      context-switches          #    0.000 /sec                   
+                 0      cpu-migrations            #    0.000 /sec                   
+               212      page-faults               #    1.676 K/sec                  
+   <not supported>      cycles                                                      
+   <not supported>      instructions                                                
+   <not supported>      branches                                                    
+   <not supported>      branch-misses                                               
+
+       0.126758472 seconds time elapsed
+
+       0.126812000 seconds user
+       0.000000000 seconds sys
+
+$ sudo perf stat -e cpu-clock,context-switches,cpu-migrations,page-faults,cycles,instructions,L1-dcache-load-misses -r 10 ./MNIST_PYTHORCH_C/build/test_compiler > /dev/null
+
+ Performance counter stats for './MNIST_PYTHORCH_C/build/test_compiler' (10 runs):
+
+            140.47 msec cpu-clock                 #    0.998 CPUs utilized            ( +-  4.43% )
+                 1      context-switches          #    7.119 /sec                     ( +- 39.44% )
+                 0      cpu-migrations            #    0.712 /sec                     ( +-100.00% )
+               212      page-faults               #    1.511 K/sec                    ( +-  0.31% )
+   <not supported>      cycles                                                      
+   <not supported>      instructions                                                
+   <not supported>      L1-dcache-load-misses                                       
+
+           0.14077 +- 0.00620 seconds time elapsed  ( +-  4.41% )
+
+```
+
+可以看到，由于我们在虚拟机中测试程序，无法获得指令数。
+
+
+
+
+## 面向嵌入式设备的优化
+
+如果要在STM32等平台运行该模型，需要对模型进行进一步优化。主要的思路有一下两种：
+
+- 将浮点数转化成定点数
 ## 在IoT-Lab测试
 
 ![ST B-L475E-IOT01A](img/20220524104119.png)

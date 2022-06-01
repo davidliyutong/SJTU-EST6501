@@ -280,8 +280,9 @@ if __name__ == '__main__':
                               EXPORT_CODE_PATH) # 路径
 
     # 编译模型到C
+    USE_IM2COL=False
     import sys
     sys.path.append('../../python')
     from compiler import Compiler
-    comp = Compiler(base_dir='./export_code')
+    comp = Compiler(base_dir=EXPORT_CODE_PATH, use_im2col=USE_IM2COL)
     comp.compile(model.seq, in_shape=(1, 1, 28, 28))

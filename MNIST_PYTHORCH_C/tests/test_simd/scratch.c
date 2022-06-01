@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdint.h>
 #include <memory.h>
 #include "pythorch/conv.h"
 #include "pythorch/gemm.h"
@@ -25,6 +26,18 @@ const int test_y[2] = { 0 };
 //     return err;
 
 // }
+
+pythorch_err_t conv2d_f32(int8_t* dout,
+                          int8_t* din,
+                          int din_hgt,
+                          int din_wid,
+                          const int8_t* weight,
+                          const int8_t* bias,
+                          const int* shape,
+                          int8_t* buf) {
+     
+    return PYTHORCH_OK;
+}
 
 const float kernel[36] = {0,0,0,0,1,0,0,0,0,
                           0,0,0,0,0.5,0,0,0,0,
@@ -93,7 +106,7 @@ int run(float* din) {
     var_0[25 + 24] = 1;
 
     im2col(var_0, 2, 5, 5, 3, 3, 1, 0, var_1);
-    gemm_f32(var_2, kernel, var_1, 2, 18, 2 * 3 * 3, 9);
+    gemm_f32(var_2, (float*)kernel, var_1, 2, 18, 2 * 3 * 3, 9);
     // col2im(var_0, 2, 5, 5, 3, 3, 1, 0, var_2);
     // int ret = memcmp(var_2, var_1, 25 * sizeof(float));
 

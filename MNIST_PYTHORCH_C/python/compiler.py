@@ -91,14 +91,19 @@ class CompilerTemplate:
         state_dict = component.state_dict()
 
         # 计算需要给im2col保留的缓冲区大小
-        pad = 0
-        stride = 1
-        k_hgt, k_wid = state_dict["weight"].shape[2:4]  # 卷积核
-        height_col = (in_hgt + 2 * pad - k_hgt) / stride + 1
-        width_col = (in_wid + 2 * pad - k_wid) / stride + 1
-        channels_col = in_num_c * k_hgt * k_wid
-        dbuf = context["app"] + cls.buf_postfix
-        dbuf_sz = height_col * width_col * channels_col
+        if "use_im2col" in context.keys() and context["use_im2col"] is True:
+            pad = 0
+            stride = 1
+            k_hgt, k_wid = state_dict["weight"].shape[2:4]  # 卷积核
+            height_col = (in_hgt + 2 * pad - k_hgt) / stride + 1
+            width_col = (in_wid + 2 * pad - k_wid) / stride + 1
+            channels_col = in_num_c * k_hgt * k_wid
+            
+            dbuf = context["app"] + cls.buf_postfix
+            dbuf_sz = height_col * width_col * channels_col
+        else:
+            dbuf = "NULL"
+            dbuf_sz = 0
 
         free_variables = [context["din"]]
         context["din"] = context["dout"]
@@ -404,7 +409,7 @@ class Compiler:
     return_type: str = "pythorch_err_t"
 
     def __init__(
-        self, dtype: str = "f32", app: str = "calc", base_dir: str = "./export"
+        self, dtype: str = "f32", app: str = "calc", base_dir: str = "./export", **kwargs
     ):
         """从Pytorch SequentialModule到C代码的编译器
 
@@ -435,6 +440,7 @@ class Compiler:
         self.dtype_mapping = {"f32": "float"}
         # 为了支持AVX/SSE，变量需要对齐
         self.var_attr: str = "__attribute__ ((aligned (32)))"
+        self.extra_args = kwargs
 
     def init_context(self):
         """初始化编译上下文
@@ -444,7 +450,7 @@ class Compiler:
         Returns:
             Dict[str, Any]: 编译上下文
         """
-        return {"dtype": self.dtype, "app": self.app}
+        return {"dtype": self.dtype, "app": self.app, **self.extra_args}
 
     @classmethod
     def variable_generator(cls, base: str = "var", index: int = 0):
@@ -541,9 +547,10 @@ class Compiler:
         src_buf += '#include "pythorch/pythorch.h"\n'
         src_buf += f'#include "{self.app}_params.h"\n'
 
-        src_buf += (
-            f"{self.var_attr} float {self.app}_g_buf[{c_g_buf_size}] = " + "{ 0 };\n"
-        )
+        if c_g_buf_size > 0:
+            src_buf += (
+                f"{self.var_attr} float {self.app}_g_buf[{c_g_buf_size}] = " + "{ 0 };\n"
+            )
         
         # 计算出每个变量（din, dout）尺寸的历史最大值，按照这个值静态分配变量的内存
         for var_name in c_var_contexts.keys():

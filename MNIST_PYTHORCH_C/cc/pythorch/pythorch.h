@@ -10,6 +10,7 @@
  */
 #pragma once
 
+#include <stdlib.h>
 #include "modules.h"
 #include "conv.h"
 #include "utils.h"

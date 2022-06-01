@@ -55,10 +55,13 @@ pythorch_err_t gemm_f32(float* dout,
             int j = 0;
 #ifdef __AVX__
             __m256 ymm0 = _mm256_set1_ps(m[i * m_wid + k]);
-            for (j = 0; j < ((n_wid)-8); j += 8) {
+            for (j = 0; j < ((n_wid)-16); j += 16) {
                 __m256 ymm1 = _mm256_load_ps(n + (k * n_wid + j));
-                __m256 ymm2 = _mm256_load_ps(dout + (i * n_wid + j));
-                _mm256_store_ps(dout + (i * n_wid + j), _mm256_add_ps(ymm2, _mm256_mul_ps(ymm0, ymm1)));
+                __m256 ymm2 = _mm256_load_ps(n + (k * n_wid + j + 8));
+                __m256 ymm3 = _mm256_load_ps(dout + (i * n_wid + j));
+                __m256 ymm4 = _mm256_load_ps(dout + (i * n_wid + j + 8));
+                _mm256_store_ps(dout + (i * n_wid + j), _mm256_add_ps(ymm3, _mm256_mul_ps(ymm0, ymm1)));
+                _mm256_store_ps(dout + (i * n_wid + j + 8), _mm256_add_ps(ymm4, _mm256_mul_ps(ymm0, ymm2)));
             }
 #endif
             for (; j < n_wid; j++) {
@@ -72,7 +75,7 @@ pythorch_err_t gemm_f32(float* dout,
     int i = 0, k = 0, j = 0;
     for (i = 0; i < m_hgt - 8; i += 8) {
         for (k = 0; k < m_wid - 8; k += 8) {
-            __m256 dout0v, dout1v, dout2v, dout3v, dout4v, dout5v, dout6v, dout7v, n0b, n1v, n2v, n3v, n4v, n5v, n6v, n7v;
+            __m256 dout0v, dout1v, dout2v, dout3v, dout4v, dout5v, dout6v, dout7v, n0v, n1v, n2v, n3v, n4v, n5v, n6v, n7v;
             for (j = 0; j < n_wid - 8; j += 8) {
                 dout0v = _mm256_load_ps(&dout[(i + 0) * n_wid + j]);
                 dout1v = _mm256_load_ps(&dout[(i + 1) * n_wid + j]);
@@ -83,15 +86,15 @@ pythorch_err_t gemm_f32(float* dout,
                 dout6v = _mm256_load_ps(&dout[(i + 6) * n_wid + j]);
                 dout7v = _mm256_load_ps(&dout[(i + 7) * n_wid + j]);
 
-                n0b = _mm256_load_ps(&n[(k + 0) * n_wid + j]);
-                dout0v += m[(i + 0) * m_wid + k + 0] * n0b;
-                dout1v += m[(i + 1) * m_wid + k + 0] * n0b;
-                dout2v += m[(i + 2) * m_wid + k + 0] * n0b;
-                dout3v += m[(i + 3) * m_wid + k + 0] * n0b;
-                dout4v += m[(i + 4) * m_wid + k + 0] * n0b;
-                dout5v += m[(i + 5) * m_wid + k + 0] * n0b;
-                dout6v += m[(i + 6) * m_wid + k + 0] * n0b;
-                dout7v += m[(i + 7) * m_wid + k + 0] * n0b;
+                n0v = _mm256_load_ps(&n[(k + 0) * n_wid + j]);
+                dout0v += m[(i + 0) * m_wid + k + 0] * n0v;
+                dout1v += m[(i + 1) * m_wid + k + 0] * n0v;
+                dout2v += m[(i + 2) * m_wid + k + 0] * n0v;
+                dout3v += m[(i + 3) * m_wid + k + 0] * n0v;
+                dout4v += m[(i + 4) * m_wid + k + 0] * n0v;
+                dout5v += m[(i + 5) * m_wid + k + 0] * n0v;
+                dout6v += m[(i + 6) * m_wid + k + 0] * n0v;
+                dout7v += m[(i + 7) * m_wid + k + 0] * n0v;
 
                 n1v = _mm256_load_ps(&n[(k + 1) * n_wid + j]);
                 dout0v += m[(i + 0) * m_wid + k + 1] * n1v;
@@ -191,14 +194,15 @@ pythorch_err_t gemm_f32(float* dout,
                 __m256 ymm3 = _mm256_load_ps(dout + (i * n_wid + j));
                 __m256 ymm4 = _mm256_load_ps(dout + (i * n_wid + j + 8));
                 _mm256_store_ps(dout + (i * n_wid + j), _mm256_add_ps(ymm3, _mm256_mul_ps(ymm0, ymm1)));
-                _mm256_store_ps(dout + (i * n_wid + j), _mm256_add_ps(ymm4, _mm256_mul_ps(ymm0, ymm2)));
+                _mm256_store_ps(dout + (i * n_wid + j + 8), _mm256_add_ps(ymm4, _mm256_mul_ps(ymm0, ymm2)));
             }
             for (; j < n_wid; j++) {
                 dout[i * n_wid + j] += m[i * m_wid + k] * n[k * n_wid + j];
             }
         }
-    } for (; i < m_hgt; i++) {
-        for (int k = 0; k < n_hgt; k++) {
+    } 
+    for (; i < m_hgt; i++) {
+        for (k = 0; k < n_hgt; k++) {
             int j = 0;
             __m256 ymm0 = _mm256_set1_ps(m[i * m_wid + k]);
             for (j = 0; j < ((n_wid)-16); j += 16) {
@@ -207,7 +211,7 @@ pythorch_err_t gemm_f32(float* dout,
                 __m256 ymm3 = _mm256_load_ps(dout + (i * n_wid + j));
                 __m256 ymm4 = _mm256_load_ps(dout + (i * n_wid + j + 8));
                 _mm256_store_ps(dout + (i * n_wid + j), _mm256_add_ps(ymm3, _mm256_mul_ps(ymm0, ymm1)));
-                _mm256_store_ps(dout + (i * n_wid + j), _mm256_add_ps(ymm4, _mm256_mul_ps(ymm0, ymm2)));
+                _mm256_store_ps(dout + (i * n_wid + j + 8), _mm256_add_ps(ymm4, _mm256_mul_ps(ymm0, ymm2)));
             }
             for (; j < n_wid; j++) {
                 dout[i * n_wid + j] += m[i * m_wid + k] * n[k * n_wid + j];
