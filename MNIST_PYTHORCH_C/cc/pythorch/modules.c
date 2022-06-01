@@ -24,6 +24,10 @@
 #include "avx_mathfun.h"
 #endif
 
+#ifdef ARM_MATH_CM4
+#include "arm_math.h"
+#endif
+
  /**
   * @brief Conv2d算子
   *
@@ -78,21 +82,21 @@ pythorch_err_t conv2d_f32(float* dout,
                  dout_wid * dout_hgt);
     } else { // buf为空指针，在嵌入式上重新启用naive卷积算法节约内存
 #endif
-    for (int cout = 0; cout < num_c_out; cout++) {
-        // 对每个输入通道计算2D卷积
-        for (int cin = 0; cin < num_c_in; cin++) {   // h和w是滑动窗位置
-            for (int h = 0; h < dout_hgt; h++) {
-                for (int w = 0; w < dout_wid; w++) {   // kh和kw是卷积核内的元素位置
-                    for (int kh = 0; kh < k_hgt; kh++) {
-                        for (int kw = 0; kw < k_wid; kw++)
-                            dout[cout * dout_hgt * dout_wid + h * dout_wid + w] +=                          // dout[cout][h][w]
-                            din[cin * din_hgt * din_wid + (h + kh) * din_wid + (w + kw)] *              // din[cin][h+kh][w+kw]
-                            weight[cout * num_c_in * k_hgt * k_wid + cin * k_hgt * k_wid + kh * k_wid + kw];// ker[cout][cin][kh][kw]
+        for (int cout = 0; cout < num_c_out; cout++) {
+            // 对每个输入通道计算2D卷积
+            for (int cin = 0; cin < num_c_in; cin++) {   // h和w是滑动窗位置
+                for (int h = 0; h < dout_hgt; h++) {
+                    for (int w = 0; w < dout_wid; w++) {   // kh和kw是卷积核内的元素位置
+                        for (int kh = 0; kh < k_hgt; kh++) {
+                            for (int kw = 0; kw < k_wid; kw++)
+                                dout[cout * dout_hgt * dout_wid + h * dout_wid + w] +=                          // dout[cout][h][w]
+                                din[cin * din_hgt * din_wid + (h + kh) * din_wid + (w + kw)] *              // din[cin][h+kh][w+kw]
+                                weight[cout * num_c_in * k_hgt * k_wid + cin * k_hgt * k_wid + kh * k_wid + kw];// ker[cout][cin][kh][kw]
+                        }
                     }
                 }
             }
         }
-    }
 #ifdef OPTIMIZE_IM2COL
     }
 #endif
@@ -117,7 +121,17 @@ pythorch_err_t linear_f32(float* dout,
                           const int* shape) {
     // 数据尺寸
     int num_c_out = shape[0], num_c_in = shape[1];
-
+#ifdef ARM_MATH_CM4
+    arm_matrix_instance_f32 weight_matrix;
+    arm_matrix_instance_f32 din_matrix;
+    arm_matrix_instance_f32 dout_matrix;
+    arm_matrix_instance_f32 bias_matrix;
+    arm_mat_init_f32(&weight_matrix, num_c_out, num_c_in, (float*)weight);
+    arm_mat_init_f32(&din_matrix, num_c_in, 1, din);
+    arm_mat_init_f32(&dout_matrix, num_c_out, 1, dout);
+    arm_mat_mult_f32(&weight_matrix, &din_matrix, &dout_matrix);
+    arm_mat_add_f32(&dout_matrix, &bias_matrix, &dout_matrix);
+#else
     int c_out = 0;
     for (c_out = 0; c_out < num_c_out; c_out++) {
         dout[c_out] = bias[c_out];
@@ -143,7 +157,7 @@ pythorch_err_t linear_f32(float* dout,
         for (; c_in < num_c_in; c_in++)
             dout[c_out] += weight[c_out * num_c_in + c_in] * din[c_in];
     }
-
+#endif
     return PYTHORCH_OK;
 }
 
@@ -258,6 +272,7 @@ pythorch_err_t avgpool2d_f32(float* dout,
  */
 pythorch_err_t relu_f32(float* dout, float* din, int size) {
     int i = 0;
+
 #ifdef __AVX__
     // AVX 加速，一次处理16个浮点数
     const __m256 zero = _mm256_set1_ps(0.0f);
@@ -364,6 +379,11 @@ pythorch_err_t tanh_f32(float* dout, float* din, int size) {
  * @return pythorch_err_t
  */
 pythorch_err_t argmax_f32(int* dout, float* din, int bin) {
+#ifdef ARM_MATH_CM4
+    uint32_t res = 0;
+    arm_max_f32(din, bin, NULL, &res);
+    *dout = res;
+#else
     float vmax = din[0];
     int res = 0;
     for (int n = 1; n < bin; n++)
@@ -372,6 +392,7 @@ pythorch_err_t argmax_f32(int* dout, float* din, int bin) {
             res = n;
         }
     *dout = res;
+#endif
 
     return PYTHORCH_OK;
 }

@@ -116,7 +116,9 @@ AS_DEFS =
 C_DEFS =  \
 -DUSE_HAL_DRIVER \
 -DSTM32L475xx \
--D__TARGET_FPU_VFP
+-D__TARGET_FPU_VFP \
+-DARM_MATH_CM4 \
+-DOPTIMIZE_IM2COL
 
 
 # AS includes
@@ -129,6 +131,7 @@ C_INCLUDES =  \
 -IDrivers/STM32L4xx_HAL_Driver/Inc/Legacy \
 -IDrivers/CMSIS/Device/ST/STM32L4xx/Include \
 -IDrivers/CMSIS/Include \
+-IDrivers/CMSIS/DSP/Include \
 -Iexport_code \
 -I../../cc/
 
@@ -154,8 +157,8 @@ CFLAGS += -MMD -MP -MF"$(@:%.o=%.d)"
 LDSCRIPT = STM32L475VGTx_FLASH.ld
 
 # libraries
-LIBS = -lc -lm -lnosys 
-LIBDIR = 
+LIBS = -lc -lm -lnosys
+LIBDIR = Drivers/CMSIS/DSP/Lib/ARM/arm_cortexM4lf_math.lib
 LDFLAGS = $(MCU) -specs=nano.specs -T$(LDSCRIPT) $(LIBDIR) $(LIBS) -Wl,-Map=$(BUILD_DIR)/$(TARGET).map,--cref -Wl,--gc-sections  -u_printf_float
 
 # default action: build all

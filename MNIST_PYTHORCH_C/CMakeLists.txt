@@ -3,11 +3,11 @@ cmake_minimum_required(VERSION 3.12)
 # set(CMAKE_C_COMPILER gcc)
 
 # Optimization Options
-set(CMAKE_BUILD_TYPE "Release") 
-# set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mavx")
-# add_definitions(-DOPTIMIZE_IM2COL)
-# add_definitions(-DOPTIMIZE_GEMM=2)
-# add_definitions(-DOPTIMIZE_INDEX)
+set(CMAKE_BUILD_TYPE "Release") # Debug, Release, RelWithDebInfo, MinSizeRel
+add_compile_options(-mavx)
+add_definitions(-DOPTIMIZE_IM2COL)
+add_definitions(-DOPTIMIZE_GEMM_AVX=2)
+add_definitions(-DOPTIMIZE_INDEX)
 
 add_subdirectory(cc/pythorch)
 link_libraries(pythorch m)

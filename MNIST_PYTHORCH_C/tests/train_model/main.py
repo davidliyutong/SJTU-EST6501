@@ -280,7 +280,7 @@ if __name__ == '__main__':
                               EXPORT_CODE_PATH) # 路径
 
     # 编译模型到C
-    USE_IM2COL=False
+    USE_IM2COL=True
     import sys
     sys.path.append('../../python')
     from compiler import Compiler

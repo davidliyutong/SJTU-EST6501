@@ -18,6 +18,11 @@
 #include <emmintrin.h>
 #endif
 
+
+#ifdef ARM_MATH_CM4
+#include "arm_math.h"
+#endif
+
  /**
   * @brief 通用矩阵乘法dout = m * n
   *
@@ -42,13 +47,25 @@ pythorch_err_t gemm_f32(float* dout,
 
     memset(dout, 0, sizeof(float) * m_hgt * n_wid);
 
-#if !defined(OPTIMIZE_GEMM)
+
+#if !defined(OPTIMIZE_GEMM_AVX)
+#ifdef ARM_MATH_CM4
+    arm_matrix_instance_f32 mat_m;
+    arm_matrix_instance_f32 mat_n;
+    arm_matrix_instance_f32 mat_dout;
+    arm_mat_init_f32(&mat_m, m_hgt, m_wid, m);
+    arm_mat_init_f32(&mat_n, n_hgt, n_wid, n);
+    arm_mat_init_f32(&mat_dout, m_hgt, n_wid, dout);
+    arm_mat_mult_f32(&mat_m, &mat_n, &mat_dout);
+#else
     for (int i = 0; i < m_hgt; i++)
         for (int k = 0; k < n_hgt; k++)
             for (int j = 0; j < n_wid; j++)
                 dout[i * n_wid + j] += m[i * m_wid + k] * n[k * n_wid + j];
+#endif
+
 #else
-#if OPTIMIZE_GEMM == 1
+#if OPTIMIZE_GEMM_AVX == 1
 
     for (int i = 0; i < m_hgt; i++) {
         for (int k = 0; k < n_hgt; k++) {
@@ -69,7 +86,7 @@ pythorch_err_t gemm_f32(float* dout,
             }
         }
     }
-#elif OPTIMIZE_GEMM == 2
+#elif OPTIMIZE_GEMM_AVX == 2
 #if defined(__AVX__)
 
     int i = 0, k = 0, j = 0;
