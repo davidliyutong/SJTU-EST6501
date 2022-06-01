@@ -51,11 +51,92 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
+#include <stdio.h>
+#if SYSTEM_SUPPORT_OS == 0
+/** Overwrite printf when using MDK**/
+int fputc(int ch, FILE *f)
+{ 	
+	while((USART1->ISR&0X40)==0);
+	USART1->RDR = (uint8_t) ch;      
+	return ch;
+}
 
+/** Overwrite printf when using GCC**/
+int _write(int fd, char *ptr, int len)  
+{  
+  HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, 0xFFFF);
+  return len;
+}
+#else
+/** Overwrite printf when using MDK**/
+int fputc(int ch, FILE *f)
+{ 	
+    taskENTER_CRITICAL();
+	while((USART1->SR&0X40)==0);
+	USART1->DR = (uint8_t) ch;      
+    taskEXIT_CRITICAL();
+	return ch;
+}
+
+/** Overwrite printf when using GCC**/
+int _write(int fd, char *ptr, int len)  
+{  
+  taskENTER_CRITICAL();
+  HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, 0xFFFF);
+  taskEXIT_CRITICAL();
+  return len;
+}
+#endif
+__STATIC_INLINE uint32_t LL_SYSTICK_IsActiveCounterFlag(void)
+{
+  //判断COUNTFLAG位是否为1，1则计数器已经递减到0了至少一次。读取该位后该位自动清零。
+  return ((SysTick->CTRL & SysTick_CTRL_COUNTFLAG_Msk) == (SysTick_CTRL_COUNTFLAG_Msk));
+}
+uint32_t getCurrentMicros(void)
+{
+ /* Ensure COUNTFLAG is reset by reading SysTick control and status register */
+ LL_SYSTICK_IsActiveCounterFlag();           //清除计数器"溢出"标志位
+ uint32_t m = HAL_GetTick();
+ const uint32_t tms = SysTick->LOAD + 1;
+ __IO uint32_t u = tms - SysTick->VAL;
+ if (LL_SYSTICK_IsActiveCounterFlag()) {
+ m = HAL_GetTick();
+ u = tms - SysTick->VAL;
+  }
+ return (m * 1000 + (u * 1000) / tms);
+}
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#include "test_data.h"
+#include "calc_fn.h"
+int infer(float* din)
+{
+    int res;
+    float dout[10];
+    uint32_t start = getCurrentMicros();
+    calc_fn(din, dout);
+    // printf("dout: %f %f %f %f %f %f %f %f %f %f\n", dout[0], dout[1], dout[2], dout[3], dout[4], dout[5], dout[6], dout[7], dout[8], dout[9]);
+    argmax_f32(&res, dout, 10);
+    uint32_t end = getCurrentMicros();
+    printf("Time elapsed: %f\n", (float)(end - start) / 1000000);
+    return res;
+}
+
+void run() {
+  const float* din;
+    int res, err;
+    err = 0;
+    for (int n = 0; n < TEST_DATA_NUM; n++)
+    {
+        din = &test_x[n][0];
+        res = infer((float*)din);
+        err += res != test_y[n];
+        printf("[INF] TEST: %d, OUT: %d, GT: %d %s\n", n, res, test_y[n],(res==test_y[n])?"":"******");
+    }
+    printf("[INF] #error: %d, ACC: %.2f%%\n", err, 100.0-(float)err / (float)TEST_DATA_NUM * 100.0);
+}
 
 /* USER CODE END 0 */
 
@@ -89,7 +170,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-  char * pData = "helloworld";
+  char * pData = "helloworld\n";
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -97,6 +178,7 @@ int main(void)
   while (1)
   {
     HAL_UART_Transmit(&huart1, (uint8_t*)pData, strlen(pData), 100);
+    run();
     HAL_Delay(1000);
     /* USER CODE END WHILE */
 

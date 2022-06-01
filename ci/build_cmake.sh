@@ -13,4 +13,6 @@ echo "[INFO] Runing mnist_example"
 time ./mnist_example > mnist_example.log
 echo "[INFO] Runing test_compiler"
 time ./test_compiler > test_compiler.log
+echo "[INFO] Runing test_stm32_export"
+time ./test_stm32_export > test_stm32_export.log
 cd $ROOT

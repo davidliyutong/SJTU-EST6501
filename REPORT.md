@@ -294,14 +294,95 @@ $ sudo perf stat -e cpu-clock,context-switches,cpu-migrations,page-faults,cycles
 如果要在STM32等平台运行该模型，需要对模型进行进一步优化。主要的思路有一下两种：
 
 - 将浮点数转化成定点数
+- 使用INT8类型的权重数据进行量化
+
+### 选择目标平台
+
+我们选择基于Cortex-M4架构的 stm32l475 MCU 移植手写数字识别模型。选择该平台的原因有：
+
+- 该系列MCU配备有DSP模块。
+- 在线测试平台`Iot-Lab`提供基于该MCU的开发版，可以上传程序并得到结果
+
+### 减小模型提及
+
+无论采用哪种优化方法，首要的工作都是减少模型权重数量。为此，我们减少了卷积层的通道数量，并且移除了一个全连接层。模型现在结构如下
+
+```python
+    self.seq = nn.Sequential(
+        nn.Conv2d( 1, 8, 5, 1),
+        nn.ReLU(),
+        nn.MaxPool2d(2),
+        nn.Conv2d(8, 8, 5, 1),
+        nn.ReLU(),
+        nn.MaxPool2d(2),
+        nn.Flatten(1),
+        nn.ReLU(),
+        nn.Linear(128, 10),
+    )
+```
+
+使用`torch-summary`工具追踪模型各层权重，得到如下结果
+
+```text
+==========================================================================================
+Layer (type:depth-idx)                   Output Shape              Param #
+==========================================================================================
+├─Sequential: 1-1                        [-1, 10]                  --
+|    └─Conv2d: 2-1                       [-1, 8, 24, 24]           208
+|    └─ReLU: 2-2                         [-1, 8, 24, 24]           --
+|    └─MaxPool2d: 2-3                    [-1, 8, 12, 12]           --
+|    └─Conv2d: 2-4                       [-1, 8, 8, 8]             1,608
+|    └─ReLU: 2-5                         [-1, 8, 8, 8]             --
+|    └─MaxPool2d: 2-6                    [-1, 8, 4, 4]             --
+|    └─Flatten: 2-7                      [-1, 128]                 --
+|    └─ReLU: 2-8                         [-1, 128]                 --
+|    └─Linear: 2-9                       [-1, 10]                  1,290
+==========================================================================================
+Total params: 3,106
+Trainable params: 3,106
+Non-trainable params: 0
+Total mult-adds (M): 0.22
+==========================================================================================
+Input size (MB): 0.00
+Forward/backward pass size (MB): 0.04
+Params size (MB): 0.01
+Estimated Total Size (MB): 0.05
+==========================================================================================
+```
+
+可以看到，我们的模型现在只有3.1k个参数，运行大概需要50KB的内存。
+
+由于我们的`Compiler.py`实现了针对`SequentialModule`的泛用编译，因此生成的代码将自动调整以适应模型结构的变化。经过测试，在x86平台上，缩小后的模型完成500个样本推理仅需要0.019s，并保持99%以上的准确率。
+
 ## 在IoT-Lab测试
+
+IoT-Lab是一个在线的IoT测试平台，用户可以利用该平台启动数十个IoT开发版进行IoT实验。该平台免费向研究者开放。平台上提供了`ST B-L475E-IOT01A`这款开发版。它有一颗基于Cortex-M4架构的stm32l475vgtx MCU。
 
 ![ST B-L475E-IOT01A](img/20220524104119.png)
 
+启动STM32CubeMX，使用图形化界面配置stm32l475vgtx的各项参数，然后生成Makefile工程。
+
 ![CubeMX](img/20220524104544.png)
+
+以下是注意事项
+
+- 由于我们使用的是arm-none-eabi-gcc编译器，因此为了将printf重定向到串口，需要实现`int _write(int fd, char *ptr, int len)`函数
+
+```c
+int _write(int fd, char *ptr, int len)  
+{  
+  HAL_UART_Transmit(&huart1, (uint8_t*)ptr, len, 0xFFFF);
+  return len;
+}
+```
+- 我们需要在`LDFLAGS`中指定`-u_printf_float`参数来使能浮点数打印以便调试
+- 我们需要在`C_DEFS`中添加`__TARGET_FPU_VFP`定义来使能浮点单元
+
+我们将原本在`mnist.c`中存在的推理函数拷贝到stm32工程的`main.c`中。该文件位于`MNIST_PYTHORCH_C/tests/test_stm32/main.c`路径下
 
 ![Helloworld](img/20220524113623.png)
 
+我们可以看到，STM32程序如预期的那样正在执行推理函数，但是速度非常缓慢，需要2.7秒才能处理一帧图像。
 
 ## Reference
 
