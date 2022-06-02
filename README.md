@@ -4,7 +4,7 @@ Pythorch，一个神经网络编译器/运行时
 
 ## 实验目标
 
-搭建一套编译工具以支持将简单的Pytorch CNN模型部署到x86计算机ARM Cortex-M架构的嵌入式设备，并探索各种加速模型推理的手段。
+搭建一套编译工具以支持将简单的Pytorch CNN模型部署到x86计算机ARM Cortex-M架构的嵌入式设备，并探索各种加速模型推理的手段。在这个领域中，比较出彩的项目有[Apache TVM](https://tvm.apache.org/)、[Google MLIR](https://mlir.llvm.org/)等。
 
 本项目参考并运用了《PROJ4——神经网络运算优化》提供的示例代码。
 
@@ -39,7 +39,7 @@ Pythorch，一个神经网络编译器/运行时
 1. 在UNIX系统中构建
 2. 使用Docker环境构建
 
-### 1. 在UNIX系统中构建
+### 在UNIX系统中构建
 
 使用`ci`目录下的bash脚本，可以一键执行从模型训练到C代码编译、测试的全部流程。这些脚本在Ubuntu上进行了测试。
 
@@ -72,7 +72,7 @@ bash ./ci/build_cmake.sh
 - `MNIST_PYTHORCH_C/test/train_model/export_code_stm32`导出的C函数`calc_fn.c/h`、测试数据`test_data.c/h`和模型权重`calc_param.c/h`。该函数经过优化，体积更小。
 - `MNIST_PYTHORCH_C/test/train_model/export_model_stm32`导出的Pytorch模型。该模型经过优化，体积更小。
 
-### 2. 使用Docker环境构建
+### 使用Docker环境构建
 
 使用我们为该工程创建的镜像，可以简化环境配置过程。这要求目标计算机上拥有Docker运行时。[Get Docker](https://docs.docker.com/get-docker/)有各平台获取Docker的指南。以Ubuntu系统为例，运行下列命令可以安装Docker并将当前用户添加到Docker用户组：
 
