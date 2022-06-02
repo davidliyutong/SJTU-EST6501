@@ -6,6 +6,8 @@ Pythorch，一个神经网络编译器/运行时
 
 搭建一套编译工具以支持将简单的Pytorch CNN模型部署到x86计算机ARM Cortex-M架构的嵌入式设备，并探索各种加速模型推理的手段。
 
+本项目参考并运用了《PROJ4——神经网络运算优化》提供的示例代码。
+
 ## 构建开发/测试流程
 
 由于条件所限，项目需要在Darwin/Linux系统上进行。因此，我们首先将项目资料中基于Visual Studio的代码转换成CMake工程的。这一过程中，我们创建了`CMakeLists.txt`，并进行了模块的重新划分。
@@ -476,6 +478,12 @@ int _write(int fd, char *ptr, int len)
 
 ![arm_mat_mult_f32](img/20220601150900.png)
 
+## Acknowledgement
+
+以下代码属于EST0601嵌入式系统课程的内容，其版权归属其创作者所有：
+
+- `MNIST_PYTHORCH_C/train_model/main.py`
+- `MNIST_PYTHORCH_C/mnist.c`
 ## Reference
 
 [The Very Large Scale IoT Testbed](https://www.iot-lab.info/)
