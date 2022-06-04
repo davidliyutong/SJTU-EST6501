@@ -58,7 +58,6 @@ bash ./ci/build_cmake.sh
 - `MNIST_PYTHORCH_C/test/train_model/export_code`导出的C函数`calc_fn.c/h`、测试数据`test_data.c/h`和模型权重`calc_param.c/h`
 - `MNIST_PYTHORCH_C/test/train_model/export_model`导出的Pytorch模型
 
-
 若要训练模型并生成x86架构的C程序，请依次执行`ci/generate_code_stm32.sh`，`ci/build_stm32.sh`
 
 ```shell
@@ -112,6 +111,10 @@ docker run -it --rm --name mnist_pythorch_c --user=$UID:$(id -g $USER) \
 
 `ci/clean.sh`中记录了删除所有工程产物的命令。在工程根目录运行`ci/clean.sh`可以删除所有工程产物。
 
+### 数据集
+
+数据集没有包含在工程存储库内。想要下载数据集，请执行`bash ./ci/download_dataset.sh`下载
+
 ## 问题约束
 
 我们的理想是设计一套将任意Pytorch模型转换为C代码的机制。然而Pytorch采取了动态计算图（Eager Mode)。在动态计算图中，参与计算的元素不仅有Pytorch Module，还包括了Pytorch Function、Python对象甚至是Numpy数组。Pytorch动态图的这种特性对语法解析工作提出了巨大挑战。考虑到项目时间有限，不可能覆盖针对种种复杂情况进行测试。我们决定将问题约束如下：
@@ -137,7 +140,6 @@ nn.Sequential(
     nn.Linear(1024, 10),
 )
 ```
-
 
 ## 编译Pytorch模型为C代码
 
@@ -235,7 +237,7 @@ pythorch_err_t calc_fn(float* din, float* dout) {
 }
 ```
 
-其中`pythorch/pythorch。h`是整个推理库的头文件，引入该头文件并链接推理库就可以使用。该推理库的设计于下一章节叙述。`__attribute__ ((aligned (32))) `是为AVX指令准备的。我们可以看到，自始至终只有两个临时变量var_0和var_1被用来保存的中间结果，这是因为我们处理的是一个序列，并不涉及到复杂的计算图。在复杂的计算图中，可能需要多个变量保存中间结果。
+其中`pythorch/pythorch。h`是整个推理库的头文件，引入该头文件并链接推理库就可以使用。该推理库的设计于下一章节叙述。`__attribute__ ((aligned (32)))`是为AVX指令准备的。我们可以看到，自始至终只有两个临时变量var_0和var_1被用来保存的中间结果，这是因为我们处理的是一个序列，并不涉及到复杂的计算图。在复杂的计算图中，可能需要多个变量保存中间结果。
 
 对于测试数据集，我们决定沿用示例代码中将测试数据保存在`test_data.c/h`文件中的做法。这主要是为了测试的便利性。在模型的实际的运用中，图像数据应该从磁盘读取、网页上传获取或者摄像头模块捕捉。
 
@@ -271,7 +273,7 @@ im2col是将一个`[C,H,W]`矩阵变成一个`[H,W]`矩阵的一个方法，其�
 
 首先，我们在不进行任何优化的情况下以Debug模式编译并执行推理程序。推理500张图片耗时6.705s。
 
-```
+```text
 real    0m6.710s
 user    0m6.705s
 sys     0m0.004s
@@ -279,7 +281,7 @@ sys     0m0.004s
 
 我们将CMake工程调整到Release模式，这将启用编译器的优化。推理耗时下降到了1.308s(-5.397)。接下来的实验均在Release模式下进行
 
-```
+```text
 real    0m1.321s
 user    0m1.308s
 sys     0m0.012s
@@ -287,7 +289,7 @@ sys     0m0.012s
 
 我们为代码添加AVX支持并通过添加`-mavx`启用AVX加速。推理耗时下降到了1.023s(-0.285)。
 
-```
+```text
 real    0m1.023s
 user    0m1.023s
 sys     0m0.000s
@@ -302,7 +304,7 @@ for (int i = 0; i < m_hgt; i++){}
             dout[i * n_wid + j] += m[i * m_wid + k] * n[k * n_wid + j];
 ```
 
-```
+```text
 real    0m0.220s
 user    0m0.215s
 sys     0m0.004s
@@ -310,7 +312,7 @@ sys     0m0.004s
 
 在加入GEMM的基础上，我们调整了池化层的算法，尽可能消除了下标的计算。推理耗时下降到了0.206s(-0.009)
 
-```
+```text
 real    0m0.209s
 user    0m0.206s
 sys     0m0.004s
@@ -319,7 +321,7 @@ sys     0m0.004s
 我们对卷积过程中出现的矩阵乘法使用AVX指令进行优化(`-DDOPTIMIZE_GEMM_AVX=1`)。推理耗时下降到了0.142s(-0.009)
 开AVX + IM2COL + 消除下标 + GEMM 优化(向量化)
 
-```
+```text
 real    0m0.142s
 user    0m0.142s
 sys     0m0.000s
@@ -327,7 +329,7 @@ sys     0m0.000s
 
 进一步考虑到缓存的局部性，我们使用所有16个YMM寄存器，将矩阵乘法拆成8x8的小块进行计算(`-DDOPTIMIZE_GEMM_AVX=2`)。推理耗时下降到了0.127s(-0.015)
 
-```
+```text
 real    0m0.127s
 user    0m0.127s
 sys     0m0.000s
@@ -455,6 +457,7 @@ int _write(int fd, char *ptr, int len)
   return len;
 }
 ```
+
 - 我们需要在`LDFLAGS`中指定`-u_printf_float`参数来使能浮点数打印以便调试
 - 我们需要在`C_DEFS`中添加`__TARGET_FPU_VFP`定义来使能浮点单元
 
@@ -463,7 +466,6 @@ int _write(int fd, char *ptr, int len)
 ![Helloworld](img/20220524113623.png)
 
 我们可以看到，STM32程序如预期的那样正在执行推理函数，但是速度非常缓慢，需要2.7秒才能处理一帧图像。
-
 
 ### 优化
 
@@ -484,8 +486,11 @@ int _write(int fd, char *ptr, int len)
 
 - `MNIST_PYTHORCH_C/train_model/main.py`
 - `MNIST_PYTHORCH_C/mnist.c`
+
 ## Reference
 
 [The Very Large Scale IoT Testbed](https://www.iot-lab.info/)
+
 [Intel Intrinsics Guide](https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html)
+
 [通用矩阵乘法及其优化](https://lzzmm.github.io/2021/09/10/GEMM/)

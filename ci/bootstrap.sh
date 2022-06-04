@@ -7,7 +7,11 @@ while [ -h "$SOURCE" ]; do # resolve $SOURCE until the file is no longer a symli
   [[ $SOURCE != /* ]] && SOURCE="$DIR/$SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
 done
 DIR="$( cd -P "$( dirname "$SOURCE" )" && pwd )"
-cd $DIR/../
+cd $DIR/../ # Change to the root directory of the project
+
+if [[ ! -f "./MNIST_PYTHORCH_C/tests/train_model/data/train_x.npy" ]]; then
+  bash ./ci/download_dataset.sh
+fi
 
 docker run -it --rm --name mnist_pythorch_c --user=$UID:$(id -g $USER) \
        -v $(pwd):/opt/embsys/sjtu-embsys-2022 davidliyutong/sjtu-embsys:latest \

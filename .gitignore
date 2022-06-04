@@ -11,3 +11,4 @@ MNIST_PYTHORCH_C/export
 MNIST_PYTHORCH_C/tests/*/export*
 MNIST_PYTHORCH_C/tests/test_compiler/export
 MNIST_PYTHORCH_C/build
+MNIST_PYTHORCH_C/tests/train_model/data
