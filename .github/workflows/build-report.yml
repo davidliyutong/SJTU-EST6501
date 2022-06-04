@@ -29,7 +29,7 @@ jobs:
       - name: Pandoc Document Converter
         uses: Ender-events/pandoc@master
         with:
-          args: README.md -o README.pdf --from markdown --listings
+          args: README.md -o README.pdf
 
       # Runs a set of commands using the runners shell
       - name:  Upload Build Artifact

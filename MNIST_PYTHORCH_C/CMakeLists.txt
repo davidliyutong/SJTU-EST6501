@@ -27,6 +27,3 @@ aux_source_directory(tests/train_model/export_code_stm32/ DIR_TEST_STM32_EXPORT_
 add_executable(test_stm32_export tests/test_compiler/mnist.c ${DIR_TEST_STM32_EXPORT_SRCS})
 target_include_directories(test_stm32_export PUBLIC cc tests/train_model/export_code_stm32)
 target_link_libraries(test_stm32_export pythorch)
-
-add_executable(test_simd tests/test_simd/scratch.c)
-target_link_libraries(test_simd pythorch)

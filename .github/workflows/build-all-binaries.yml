@@ -33,6 +33,7 @@ jobs:
           options: -v ${{ github.workspace }}:/opt/embsys/sjtu-embsys-2022
           run: |
             cd /opt/embsys/sjtu-embsys-2022
+            bash ./ci/download_dataset.sh
             bash ./ci/generate_code.sh
             bash ./ci/generate_code_stm32.sh
             bash ./ci/build_cmake.sh
